@@ -1,0 +1,11 @@
+[Unit]
+Description=Check orchestrator recovery every five minutes
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=5min
+AccuracySec=1s
+Unit=orchestrator.service
+
+[Install]
+WantedBy=timers.target

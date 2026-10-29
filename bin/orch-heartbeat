@@ -1,6 +1,6 @@
 #!/bin/bash
 # shellcheck source=bin/orch-common.sh
-source "$(dirname "$0")/orch-common.sh"
+source "$(dirname "$0")/orch-common.sh" || exit $?
 "$(dirname "$0")/orch-usage"
 echo "-- workers"
 grep -v '^#' "$ORCH_WORKERS" | while IFS="$(printf '\t')" read -r agent dir title; do
@@ -17,7 +17,7 @@ grep -v '^#' "$ORCH_WORKERS" | while IFS="$(printf '\t')" read -r agent dir titl
   [ -f "$dir/STATUS.md" ] && { echo "-- $title status"; head -c 600 "$dir/STATUS.md"; echo; }
   # Evidence, not claims: what actually changed on disk, commits, and the newest build/test output.
   echo "-- $title evidence"
-  nf=$(find -L "$dir" \( -name .git  -o -name obj -o -name node_modules -o -name .orchestration \) -prune -o -type f ! -name STATUS.md ! -name NEEDS-HUMAN.md ! -name PLAN.md ! -name TASK.md -printf '%T@ %p\n' 2>/dev/null | sort -n | tail -1)
+  nf=$(find -L "$dir" \( -name .git  -o -name obj -o -name node_modules -o -name .orchestration \) -prune -o -type f ! -name STATUS.md ! -name NEEDS-HUMAN.md ! -name PLAN.md ! -name TASK.md ! -name '*-parent-session' -printf '%T@ %p\n' 2>/dev/null | sort -n | tail -1)
   if [ -n "$nf" ]; then
   age=$(( ($(date +%s) - ${nf%%.*}) / 60 )); echo "newest work file: ${nf#* } (${age}m ago)"
   [ "$age" -gt 45 ] && echo "STALL? no work-file change for ${age}m"

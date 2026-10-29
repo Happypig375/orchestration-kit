@@ -1,0 +1,11 @@
+[Unit]
+Description=Check orch-resume-workers recovery every five minutes
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=5min
+AccuracySec=1s
+Unit=orch-resume-workers.service
+
+[Install]
+WantedBy=timers.target

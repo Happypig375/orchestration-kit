@@ -62,6 +62,20 @@ Budget cache misses explicitly. Short retention favors finishing a burst before 
 gap; longer retention suits intermittent unattended work. Do not spend hourly heartbeat
 turns solely to keep a cache warm when a less frequent cache miss costs less overall.
 
+## Endpoint security and simultaneous failures
+
+Some endpoint detection and response agents match **command-line text**, not just executed
+behavior. For example, Cortex XDR's `python_encoded_command` behavioral rule can kill the
+whole causality tree: IDE, agents and their units. Never run a Python one-liner that decodes
+and executes code, or executes code read from standard input. Never quote such a one-liner
+inside a shell command, heredoc, commit message or terminal message either: its text alone
+can trigger the rule. Describe the pattern only in words. Copy a plain `.py` file and run
+it by path instead; parsing data from standard input is distinct from executing it.
+
+If everything dies at once, inspect the endpoint-security logs for terminate/causality
+events before blaming the model or repeatedly restarting. Use your administrator's normal
+log-access procedure; do not disable or evade endpoint security.
+
 ## Reboots and pinned parents
 
 Orca may restore tabs without restarting agents. Keep a private workers.tsv with one parent
@@ -71,8 +85,19 @@ session. The kit deliberately strengthens the source's Claude latest-session fal
 requiring a pinned Claude parent too.
 
 Order user units after the Orca runtime, wait for readiness with bounded retries, and keep
-supervisor authentication separate from worker authentication. Check process identity and
-checkout before resuming. If an existing process cannot be identified confidently, inspect
+supervisor authentication separate from worker authentication. Invoke the IDE CLI by
+absolute path so an unrelated system command cannot shadow it. Use an account wrapper for
+supervisor launch and tab restore; supply the bypass CLI flag and a revive goal as the first
+message. A directory-scoped shell function fixes IDE tab restoration that otherwise selects
+a default profile with no prompt. Do not set a bypass default mode in settings: its startup
+dialog can block unattended recovery. Maintain the current pin from SessionStart events.
+
+Run supervisor and worker recovery services from five-minute timers. Hold a flock throughout
+each recovery run so manual and timer invocations cannot double-launch. In the dedicated
+supervisor checkout, stop a confirmed wrong-profile process and wait before resuming the
+pinned parent through its wrapper. Two consecutive checks finding a correctly profiled
+supervisor idle with no watcher justify a goal nudge; busy/unknown state resets the count.
+Check process identity and checkout before resuming. If an existing process cannot be identified confidently, inspect
 it before creating another. Preserve task state in repos or an authorized tracker; an
 Orca workspace and a local session are not backups. Recreate session-only watches after
 reboot or supervisor restart.
@@ -145,9 +170,9 @@ or provider details in a public kit.
 
 Before cleanup, save uncommitted work, required artifacts, logs and parent IDs to an approved
 private archive. Confirm the intended checkout has no live terminals with
-`orca terminal list --worktree "path:$CHECKOUT" --json`. Stop or transfer owned workers first.
-Inspect `orca project setups --json`, select the intended setup and run
-`orca project setup-delete --setup "$SETUP_ID"`. Use `--force` only after reviewing saved
+`"$ORCH_ORCA" terminal list --worktree "path:$CHECKOUT" --json`. Stop or transfer owned workers first.
+Inspect `"$ORCH_ORCA" project setups --json`, select the intended setup and run
+`"$ORCH_ORCA" project setup-delete --setup "$SETUP_ID"`. Use `--force` only after reviewing saved
 workspace details. This unregisters the setup; it is distinct from deleting a directory.
 There is no `orca repo rm` command in the CLI this kit targets; verify future CLI changes
 before adapting. Delete an archived checkout only when deletion itself is authorized.

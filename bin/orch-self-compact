@@ -1,6 +1,6 @@
 #!/bin/bash
 # shellcheck source=bin/orch-common.sh
-source "$(dirname "$0")/orch-common.sh"
+source "$(dirname "$0")/orch-common.sh" || exit $?
 size=$(python3 -I - "$ORCH_TRANSCRIPT_DIR" <<'PYTHON'
 from pathlib import Path
 import sys

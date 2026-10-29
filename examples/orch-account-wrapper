@@ -1,0 +1,8 @@
+#!/bin/bash
+# Dedicated supervisor account. Also supplies the first prompt and session-pin hook.
+set -eu
+kit=${ORCH_HOME:-$HOME/orchestration-kit}
+# shellcheck source=bin/orch-common.sh
+source "$kit/bin/orch-common.sh"
+: "${ORCH_CLAUDE_CONFIG_DIR:?set a dedicated supervisor configuration directory}"
+exec python3 "$ORCH_HOME/bin/orch-supervisor.py" launch "$@"

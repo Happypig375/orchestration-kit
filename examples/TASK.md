@@ -21,3 +21,8 @@ headed browser open for the human; never solve or evade it.
 
 Before finishing, run the acceptance checks, record their outcomes, and state any
 remaining limitation. Keep durable state in this repo or the authorized work tracker.
+
+Endpoint security may match command-line text and kill the entire IDE/agent tree. Never run
+or quote Python one-liners that decode and execute code or execute standard input, including
+inside heredocs, commit messages or terminal messages. Use a plain `.py` file by path.
+If everything dies together, inspect endpoint-security terminate/causality logs.

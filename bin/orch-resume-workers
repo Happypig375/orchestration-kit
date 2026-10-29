@@ -1,7 +1,7 @@
 #!/bin/bash
 # Resume one pinned parent per checkout; native children never get registry rows.
 # shellcheck source=bin/orch-common.sh
-source "$(dirname "$0")/orch-common.sh"
+source "$(dirname "$0")/orch-common.sh" || exit $?
 exec 9>"$ORCH_STATE_DIR/resume.lock"
 flock -n 9 || exit 0
 [[ -f $ORCH_WORKERS ]] || { echo 'no registry'; exit 0; }

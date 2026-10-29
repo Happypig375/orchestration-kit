@@ -15,3 +15,8 @@ a detached shell alone does not provide a wake notification. Recreate it after r
 If context has grown substantially, write progress first, then launch
 setsid bin/orch-self-compact >/dev/null 2>&1 &
 so /compact is submitted only when this session becomes idle.
+
+Recovery timers use two idle/no-watcher strikes before nudging this session. Keep the watcher
+armed while waiting. If the IDE and all agents die together, check endpoint-security logs
+for terminate/causality events before repeated recovery attempts; follow the playbook's
+command-line-text precautions.

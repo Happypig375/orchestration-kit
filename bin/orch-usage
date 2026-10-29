@@ -2,6 +2,7 @@
 """Bounded account usage summary, without account identities or subscription labels."""
 import json
 import os
+from pathlib import Path
 import subprocess
 import sys
 
@@ -22,7 +23,10 @@ def line(label, limits):
 
 
 try:
-    result = subprocess.run([os.getenv('ORCH_ORCA', 'orca'), 'account', 'list', '--json'],
+    binary = os.getenv('ORCH_ORCA', str(Path.home() / '.local/bin/orca'))
+    if not Path(binary).is_absolute():
+        raise ValueError('ORCH_ORCA must be an absolute IDE CLI path')
+    result = subprocess.run([binary, 'account', 'list', '--json'],
                             capture_output=True, text=True, check=True, timeout=30)
     data = json.loads(result.stdout)['result']['rateLimits']
     for i, account in enumerate(data.get('inactiveClaudeAccounts', []), 1):
