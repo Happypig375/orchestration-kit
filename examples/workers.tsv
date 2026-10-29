@@ -1,0 +1,4 @@
+# agent<TAB>absolute-checkout-directory<TAB>terminal-title
+# Replace these commented examples with real rows, using literal tabs and absolute paths.
+# codex	/srv/projects/sample-code	code-worker
+# claude	/srv/projects/sample-review	review-worker

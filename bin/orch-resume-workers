@@ -1,0 +1,44 @@
+#!/bin/bash
+# Resume one pinned parent per checkout; native children never get registry rows.
+# shellcheck source=bin/orch-common.sh
+source "$(dirname "$0")/orch-common.sh"
+exec 9>"$ORCH_STATE_DIR/resume.lock"
+flock -n 9 || exit 0
+[[ -f $ORCH_WORKERS ]] || { echo 'no registry'; exit 0; }
+msg='The server restarted. Re-read TASK.md, STATUS.md and AGENTS.md. Inspect existing child state and artifacts before continuing. Do not duplicate active work.'
+for ((i=0; i<60; i++)); do
+  if { [[ -z ${ORCH_NETWORK_URL:-} ]] || curl -s --max-time 5 -o /dev/null "$ORCH_NETWORK_URL"; } && orca status >/dev/null 2>&1; then break; fi
+  sleep 5
+done
+(( i < 60 )) || { echo 'network or Orca not ready' >&2; exit 1; }
+running() {
+  local p
+  for p in $(pgrep -u "$(id -u)" -x "$1"); do
+    [[ $(readlink "/proc/$p/cwd") == "$2" ]] || continue
+    if [[ $1 == claude && -n ${ORCH_CLAUDE_CONFIG_DIR:-} ]] &&
+       tr '\0' '\n' < "/proc/$p/environ" 2>/dev/null | grep -Fxq "CLAUDE_CONFIG_DIR=$ORCH_CLAUDE_CONFIG_DIR"; then continue; fi
+    return 0
+  done
+  return 1
+}
+while IFS=$'\t' read -r agent dir title; do
+  [[ -n $agent && $agent != \#* && -d $dir ]] || continue
+  case $agent in claude|codex) ;; *) echo "unknown agent: $agent" >&2; continue;; esac
+  running "$agent" "$dir" && { echo "running: $title"; continue; }
+  session_file="$dir/.$agent-parent-session"
+  [[ -s $session_file ]] || { echo "missing parent session: $title" >&2; continue; }
+  session_id=$(cat "$session_file")
+  python3 -I -c 'import sys,uuid; uuid.UUID(sys.argv[1])' "$session_id" 2>/dev/null || {
+    echo "invalid parent session: $title" >&2; continue;
+  }
+  cmd=$(python3 -I - "$agent" "$session_id" "$dir" "$msg" "${ORCH_CODEX_BIN:-codex}" "${ORCH_CLAUDE_BIN:-claude}" <<'PY'
+import shlex,sys
+agent,session,directory,message,codex,claude=sys.argv[1:]
+args=([codex,'--no-daemon','resume',session,'--cd',directory,message] if agent=='codex'
+      else ['env','-u','CLAUDE_CONFIG_DIR',claude,'--resume',session,message])
+print(shlex.join(args))
+PY
+  ) || continue
+  orca terminal create --worktree "path:$dir" --title "$title" --command "$cmd" --json >/dev/null &&
+    echo "relaunched: $title" || echo "failed: $title" >&2
+done < "$ORCH_WORKERS"

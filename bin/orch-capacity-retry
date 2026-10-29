@@ -1,0 +1,21 @@
+#!/bin/bash
+# shellcheck source=bin/orch-common.sh
+source "$(dirname "$0")/orch-common.sh"
+mkdir -p "$ORCH_STATE_DIR/capacity"
+exec 9>"$ORCH_STATE_DIR/capacity.lock"
+flock -n 9 || exit 0
+grep -v '^#' "$ORCH_WORKERS" | while IFS=$'\t' read -r agent dir title; do
+  [ "$agent" = codex ] || continue
+  orca terminal list --worktree "path:$dir" --json 2>/dev/null | python3 -I -c '
+import json,sys
+for t in json.load(sys.stdin).get("result",{}).get("terminals",[]): print(t["handle"])' | while read -r h; do
+    screen=$(orca terminal read --terminal "$h" --limit 40 2>/dev/null) || continue
+    tail=$(printf '%s\n' "$screen" | grep -vE '^\s*$' | tail -10)
+    n=$(cat "$ORCH_STATE_DIR/capacity/$h" 2>/dev/null || echo 0)
+    if echo "$tail" | grep -q 'at capacity' && ! echo "$tail" | grep -q 'esc to interrupt'; then
+      if [ "$n" -ge "$ORCH_CAPACITY_MAX" ]; then echo "EXHAUSTED $h ($title)"; continue; fi
+      orca terminal send --terminal "$h" --text continue --enter >/dev/null 2>&1 || continue
+      echo $((n + 1)) > "$ORCH_STATE_DIR/capacity/$h"; echo "$(date '+%F %T') continue #$((n + 1)) -> $h ($title)" >> "$ORCH_STATE_DIR/capacity.log"
+    elif ! echo "$tail" | grep -q 'at capacity'; then rm -f "$ORCH_STATE_DIR/capacity/$h"; fi
+  done
+done

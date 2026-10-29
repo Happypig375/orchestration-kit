@@ -1,0 +1,9 @@
+# Private runtime configuration and state
+/workers.tsv
+/STATE.md
+/CLAUDE.md
+/transcripts/
+/.runtime/
+*.jsonl
+*-parent-session
+__pycache__/

@@ -1,0 +1,40 @@
+#!/bin/bash
+# shellcheck source=bin/orch-common.sh
+source "$(dirname "$0")/orch-common.sh"
+"$(dirname "$0")/orch-usage"
+echo "-- workers"
+grep -v '^#' "$ORCH_WORKERS" | while IFS="$(printf '\t')" read -r agent dir title; do
+  [ -n "$agent" ] || continue
+  st=dead; for p in $(pgrep -u "$(id -u)" -x "$agent"); do [ "$(readlink /proc/$p/cwd)" = "$dir" ] && st=running; done
+  echo "$title: $st"
+done
+newlines() { # $1 file, $2 key: print lines added since last heartbeat
+  [ -f "$1" ] || return 0; n=$(wc -l < "$1"); o=$(cat "$ORCH_STATE_DIR/$2" 2>/dev/null || echo 0)
+  [ "$n" -gt "$o" ] && { echo "-- NEW in $1:"; tail -n $((n - o)) "$1" | cut -c1-300; }; echo "$n" > "$ORCH_STATE_DIR/$2"; }
+grep -v '^#' "$ORCH_WORKERS" | while IFS="$(printf '\t')" read -r agent dir title; do
+  [ -n "$agent" ] || continue; k=$(echo "$dir" | tr / _)
+  newlines "$dir/NEEDS-HUMAN.md" "nh$k"
+  [ -f "$dir/STATUS.md" ] && { echo "-- $title status"; head -c 600 "$dir/STATUS.md"; echo; }
+  # Evidence, not claims: what actually changed on disk, commits, and the newest build/test output.
+  echo "-- $title evidence"
+  nf=$(find -L "$dir" \( -name .git  -o -name obj -o -name node_modules -o -name .orchestration \) -prune -o -type f ! -name STATUS.md ! -name NEEDS-HUMAN.md ! -name PLAN.md ! -name TASK.md -printf '%T@ %p\n' 2>/dev/null | sort -n | tail -1)
+  if [ -n "$nf" ]; then
+  age=$(( ($(date +%s) - ${nf%%.*}) / 60 )); echo "newest work file: ${nf#* } (${age}m ago)"
+  [ "$age" -gt 45 ] && echo "STALL? no work-file change for ${age}m"
+  else echo "newest work file: none"; fi
+  if git -C "$dir" rev-parse 2>/dev/null; then
+    echo "git: $(git -C "$dir" branch --show-current) $(git -C "$dir" log -1 --format='%h %cr %s' 2>/dev/null | cut -c1-120); uncommitted $(git -C "$dir" status --porcelain | wc -l)"
+  fi
+  tr=$(find -L "$dir" -name .git -prune -o \( -name '*.trx' -o -path '*test-results*' -o -path '*TestResults*' -o -name 'build*.log' -o -name 'test*.log' \) -type f -printf '%T@ %p\n' 2>/dev/null | sort -n | tail -1)
+  [ -n "$tr" ] && echo "latest build/test artifact: ${tr#* } ($(( ($(date +%s) - ${tr%%.*}) / 60 ))m ago)" || echo "latest build/test artifact: none"
+done
+[ -z "$ORCH_HUMAN_QUEUE" ] || newlines "$ORCH_HUMAN_QUEUE" queue
+if [ -n "$ORCH_BACKUP_UNIT" ]; then
+  echo "-- backup: $(systemctl --user show "$ORCH_BACKUP_UNIT" -p Result --value)"
+fi
+if [ -n "$ORCH_BACKUP_TIMER" ]; then
+  echo "-- backup last trigger: $(systemctl --user show "$ORCH_BACKUP_TIMER" -p LastTriggerUSec --value)"
+fi
+if [ -n "$ORCH_INBOX_DIR" ]; then
+  echo "-- inbox files: $(find "$ORCH_INBOX_DIR" -maxdepth 1 -type f -printf '.\n' 2>/dev/null | wc -l)"
+fi

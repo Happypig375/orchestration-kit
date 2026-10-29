@@ -1,0 +1,30 @@
+#!/bin/bash
+# Called by the user service; terminal process lifetime is managed by Orca.
+set -eu
+kit=${ORCH_HOME:-$HOME/orchestration-kit}
+# shellcheck source=bin/orch-common.sh
+source "$kit/bin/orch-common.sh"
+: "${ORCH_CLAUDE_CONFIG_DIR:?set a dedicated supervisor configuration directory}"
+exec 9>"$ORCH_STATE_DIR/supervisor.lock"
+flock -n 9 || exit 0
+for p in $(pgrep -u "$(id -u)" -x claude); do
+  if [[ $(readlink "/proc/$p/cwd") == "$ORCH_HOME" ]] &&
+     tr '\0' '\n' < "/proc/$p/environ" 2>/dev/null | grep -Fxq "CLAUDE_CONFIG_DIR=$ORCH_CLAUDE_CONFIG_DIR"; then
+    echo 'supervisor already running'; exit 0
+  fi
+done
+for ((i=0; i<60; i++)); do
+  if { [[ -z ${ORCH_NETWORK_URL:-} ]] || curl -s --max-time 5 -o /dev/null "$ORCH_NETWORK_URL"; } && orca status >/dev/null 2>&1; then break; fi
+  sleep 5
+done
+(( i < 60 )) || { echo 'network or Orca not ready' >&2; exit 1; }
+session=$(cat "$ORCH_STATE_DIR/supervisor-session")
+python3 -I -c 'import sys,uuid; uuid.UUID(sys.argv[1])' "$session"
+cmd=$(python3 -I - "${ORCH_CLAUDE_BIN:-claude}" "$ORCH_CLAUDE_CONFIG_DIR" "$session" <<'PY'
+import shlex,sys
+binary,config,session=sys.argv[1:]
+print(shlex.join(['env','CLAUDE_CONFIG_DIR='+config,binary,'--resume',session,
+                 'Read CLAUDE.md and STATE.md. Recreate the background watcher.']))
+PY
+)
+orca terminal create --worktree "path:$ORCH_HOME" --title "$ORCH_TERMINAL_TITLE" --command "$cmd" --json

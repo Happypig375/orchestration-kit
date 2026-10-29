@@ -1,0 +1,25 @@
+#!/bin/bash
+# shellcheck source=bin/orch-common.sh
+source "$(dirname "$0")/orch-common.sh"
+if [ "${1:-}" = --mode ]; then
+  case "${2:-}" in active|healthy|idle) echo "$2" > "$ORCH_STATE_DIR/mode";;
+    *) echo "usage: $0 [--mode active|healthy|idle]" >&2; exit 2;; esac
+  exit 0
+fi
+case "$(cat "$ORCH_STATE_DIR/mode" 2>/dev/null)" in active) iv=720 ;; idle) iv=7200 ;; *) iv=1800 ;; esac
+snap() { # fingerprint of everything that should wake the orchestrator early
+  stat -c '%n %s %y' "$ORCH_WORKERS" "$ORCH_HUMAN_QUEUE" 2>/dev/null
+  grep -v '^#' "$ORCH_WORKERS" | while IFS="$(printf '\t')" read -r agent dir title; do
+    [ -n "$agent" ] || continue
+    stat -c '%n %s %y' "$dir/NEEDS-HUMAN.md" "$dir/STATUS.md" 2>/dev/null
+    st=dead; for p in $(pgrep -u "$(id -u)" -x "$agent"); do [ "$(readlink /proc/$p/cwd)" = "$dir" ] && st=up; done
+    echo "$title $st"
+  done; }
+base=$(snap); start=$(date +%s)
+while :; do
+  sleep "$ORCH_POLL_SECONDS"
+  ex=$("$ORCH_HOME/bin/orch-capacity-retry" | grep EXHAUSTED) && { echo "WAKE capacity retries exhausted: $ex"; exit 0; }
+  now=$(snap)
+  [ "$now" != "$base" ] && { echo "WAKE event ($(date +%H:%M)):"; diff <(echo "$base") <(echo "$now") 2>/dev/null | grep '^[<>]' | cut -c1-200; exit 0; }
+  [ $(( $(date +%s) - start )) -ge $iv ] && { echo "WAKE interval $(cat "$ORCH_STATE_DIR/mode" 2>/dev/null || echo healthy) ($(date +%H:%M))"; exit 0; }
+done

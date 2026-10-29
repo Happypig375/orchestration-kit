@@ -1,0 +1,16 @@
+[Unit]
+Description=Restore registered pinned worker sessions in Orca
+After=orca-serve.service orchestrator.service
+Wants=orca-serve.service
+
+[Service]
+Type=oneshot
+Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
+Environment=ORCH_HOME=%h/orchestration-kit
+Environment=ORCH_CLAUDE_CONFIG_DIR=%h/.config/orchestrator-claude
+EnvironmentFile=-%h/.config/orchestration-kit/environment
+ExecStart=%h/orchestration-kit/bin/orch-resume-workers
+TimeoutStartSec=660
+
+[Install]
+WantedBy=default.target

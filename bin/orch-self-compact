@@ -1,0 +1,22 @@
+#!/bin/bash
+# shellcheck source=bin/orch-common.sh
+source "$(dirname "$0")/orch-common.sh"
+size=$(python3 -I - "$ORCH_TRANSCRIPT_DIR" <<'PYTHON'
+from pathlib import Path
+import sys
+files = list(Path(sys.argv[1]).glob('*.jsonl'))
+print(max(files, key=lambda p: p.stat().st_mtime).stat().st_size if files else 0)
+PYTHON
+) || exit 1
+last=$(cat "$ORCH_STATE_DIR/compact-size" 2>/dev/null || echo 0)
+[ "${1:-}" = --force ] || [ $((size - last)) -gt "$ORCH_COMPACT_BYTES" ] || { echo "skip: grew $((size - last)) bytes"; exit 0; }
+H=$(orca terminal list --worktree "path:$ORCH_HOME" --json 2>/dev/null | python3 -I -c '
+import json,sys
+for t in json.load(sys.stdin)["result"]["terminals"]:
+    if t.get("title")==sys.argv[1] and t.get("writable"):
+        print(t["handle"]); break
+' "$ORCH_TERMINAL_TITLE")
+[ -n "$H" ] || { echo "no orchestrator terminal" >&2; exit 1; }
+sleep "${ORCH_COMPACT_DELAY:-20}"   # let the current turn finish
+orca terminal wait --terminal "$H" --for tui-idle --timeout-ms 600000 >/dev/null 2>&1 || exit 1
+orca terminal send --terminal "$H" --text "/compact Keep: orchestrator role and rules (CLAUDE.md), live state (STATE.md: worker handles, scheduled job IDs, pending user decisions), budget pace, latest worker statuses. Drop setup debugging details and tool output." --enter --json >/dev/null && echo "$size" > "$ORCH_STATE_DIR/compact-size" && echo "compact sent"

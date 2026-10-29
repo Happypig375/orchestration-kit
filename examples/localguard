@@ -1,0 +1,25 @@
+#!/bin/bash
+# Administrative template. Review locally; never run from an agent without authorization.
+# Only locally generated traffic on loopback is affected; remote access needs separate controls.
+set -eu
+: "${ORCH_SERVICE_USER:?set the service owner account}"
+: "${ORCH_GUARD_PORTS:?set a space-separated list of private TCP ports}"
+owner=$(id -u "$ORCH_SERVICE_USER")
+read -r -a ports <<< "$ORCH_GUARD_PORTS"
+for port in "${ports[@]}"; do
+  [[ $port =~ ^[0-9]+$ && $port -ge 1 && $port -le 65535 ]] || exit 2
+done
+fw() {
+  local tool=$1 action=$2 port
+  for port in "${ports[@]}"; do
+    while "$tool" -w -D OUTPUT -o lo -p tcp --dport "$port" -m owner ! --uid-owner "$owner" -j REJECT 2>/dev/null; do :; done
+    if [[ $action == apply ]]; then
+      "$tool" -w -I OUTPUT 1 -o lo -p tcp --dport "$port" -m owner ! --uid-owner "$owner" -j REJECT
+    fi
+  done
+}
+case ${1:-} in
+  apply|remove) fw iptables "$1"; fw ip6tables "$1";;
+  status) iptables -S OUTPUT; ip6tables -S OUTPUT;;
+  *) echo "usage: $0 apply|remove|status" >&2; exit 2;;
+esac
